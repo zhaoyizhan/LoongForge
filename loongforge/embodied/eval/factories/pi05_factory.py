@@ -79,12 +79,13 @@ class PI05ModelFactory:
 
         @torch.no_grad()
         def _predict_action_wrapper(
-            images, instructions, state=None, dataset_stats=None, image_mask=None
+            images, instructions, state=None, dataset_stats=None, image_mask=None,
+            seeds=None,
         ):
             out = original_predict_action(
                 images, instructions, state=state, dataset_stats=dataset_stats,
                 image_normalize_mode=image_norm_mode, normalization_mode=norm_mode,
-                image_mask=image_mask,
+                image_mask=image_mask, seeds=seeds,
             )
             return out[:, :chunk_execute_steps] if chunk_execute_steps > 0 else out
 
@@ -101,6 +102,10 @@ class PI05ModelFactory:
             "dataset_statistics_path": server_args.dataset_statistics_path,
             "tokenizer_path": model._tokenizer_path,
             "chunk_execute_steps": chunk_execute_steps if chunk_execute_steps > 0 else None,
+            # Server-side batching contract: per-row noise comes from a fixed
+            # seed, so batch and sequential rows stay comparable.
+            "supports_batching": True,
+            "noise_seed": None if model_cfg.noise_seed is None else int(model_cfg.noise_seed),
         }
         return PredictActionModelSpec(model=model, metadata=metadata)
 
