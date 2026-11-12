@@ -386,3 +386,18 @@ vulkaninfo
 
 - [model_integration_guide.md](https://github.com/baidu-baige/LoongForge/blob/master/loongforge/embodied/eval/model_integration_guide.md) — 新模型语义检查清单，含 pi0.5 与 X-VLA 的并排对比
 - [predict_action_interface.md](https://github.com/baidu-baige/LoongForge/blob/master/loongforge/embodied/eval/predict_action_interface.md) — `predict_action` 接口契约（签名、shape、反归一化归属、后处理 vs 模型）
+
+---
+
+## 8. 评测基准文档
+
+逐基准的复现指南见 [评测基准文档](eval_docs/benchmarks/index.md)，当前包含：
+
+- [LIBERO-Plus](eval_docs/benchmarks/libero_plus.md)
+- [LIBERO-Pro](eval_docs/benchmarks/libero_pro.md)
+
+```{toctree}
+:hidden:
+
+eval_docs/benchmarks/index
+```
