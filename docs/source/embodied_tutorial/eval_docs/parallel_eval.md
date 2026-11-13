@@ -55,6 +55,13 @@ When the protocol is one episode per task (LIBERO-Plus), every episode would oth
 start a fresh process. On a slow shared filesystem the imports dominate, so set
 `benchmark.tasks_per_unit` (e.g. `5`) to run several tasks in the same worker.
 
+**Lifecycle.** Each unit is launched as its own process group (`start_new_session`). When
+a unit exceeds `run.unit_timeout_sec` the coordinator kills the whole group rather than
+the wrapper, so a sim stuck in native code cannot outlive its unit. The same sweep runs in
+a `finally` on every exit path — and `SIGTERM` is converted into `SystemExit` so that path
+executes when the coordinator is stopped by a supervisor; otherwise the servers and sims
+survive as orphans that keep a GPU and a core busy with nobody reading their output.
+
 Server-side batching (`server.batching`, below) is the third knob, and the only one that
 raises the ceiling for an inference-bound model:
 
@@ -77,8 +84,8 @@ Three switches control how action chunks are consumed:
 | Switch | Default | Meaning |
 |---|---|---|
 | `benchmark.return_action_chunk` | `false` (LIBERO: `true`) | `false`: the inference service caches the chunk and returns one action per env step. `true`: the client receives the whole chunk and executes it locally |
-| `benchmark.chunk_execute_steps` | 0 (all) | How many actions of a returned chunk are executed before re-planning |
-| `benchmark.skip_intra_chunk_obs` | `false` | (RoboTwin only) Inside a chunk, build a proprio-only observation instead of rendering the cameras. Camera rendering is the dominant sim cost, so this is what makes long episodes much cheaper |
+| `server.chunk_execute_steps` | 0 (all) | How many actions of a returned chunk are executed before re-planning. RoboTwin also accepts the `benchmark.` alias; for LIBERO/CALVIN only the `server.` key is read |
+| `benchmark.skip_intra_chunk_obs` | `false` | Inside a client-owned chunk, stop rendering the cameras: RoboTwin builds a proprio-only observation, LIBERO swaps the camera sensors for a zero-filled stand-in of the same shape. Camera rendering is the dominant sim cost, so this is what makes long episodes much cheaper |
 
 With `skip_intra_chunk_obs` the evaluation becomes open-loop inside a chunk: the policy
 sees fresh observations only every `chunk_execute_steps` steps. This is the same cadence
