@@ -83,7 +83,7 @@ def test_run_retries_a_failed_unit_once(monkeypatch: Any, tmp_path: Any) -> None
 
     launches: dict[int, int] = {}
 
-    def fake_launch(config: Any, shard: Any, index: int, url: str, output_dir: Any, tmp: Any) -> _FakeProc:
+    def fake_launch(config: Any, shard: Any, index: int, url: str, output_dir: Any, tmp: Any, **kwargs: Any) -> _FakeProc:
         launches[index] = launches.get(index, 0) + 1
         return _FakeProc(1 if (index == 0 and launches[index] == 1) else 0)
 
@@ -603,7 +603,7 @@ def test_run_does_not_retry_a_unit_that_wrote_every_episode(monkeypatch: Any, tm
 
     launches: dict[int, int] = {}
 
-    def fake_launch(config: Any, shard: Any, index: int, url: str, output_dir: Any, tmp: Any) -> _FakeProc:
+    def fake_launch(config: Any, shard: Any, index: int, url: str, output_dir: Any, tmp: Any, **kwargs: Any) -> _FakeProc:
         launches[index] = launches.get(index, 0) + 1
         worker = Path(output_dir) / f"worker_{index}"
         worker.mkdir(parents=True, exist_ok=True)
@@ -640,3 +640,25 @@ def test_shard_config_makes_ckpt_setting_unique_per_worker() -> None:
     plain = coord._shard_config(base, shard, "ws://h:1", "/tmp/out")
     assert unique["run"]["ckpt_setting"] == "pi05_robotwin2_w3"
     assert plain["run"]["ckpt_setting"] == "pi05_robotwin2"
+
+
+def test_launch_unit_pins_egl_device_to_slot_gpu(monkeypatch: Any, tmp_path: Any) -> None:
+    """CPU-sim workers still render via EGL; pin each to its slot GPU, not GPU 0."""
+    from loongforge.embodied.eval.orchestrator import coordinator as coord
+
+    captured: dict = {}
+
+    def fake_popen(command: Any, **kwargs: Any):
+        captured.update(kwargs)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(coord.subprocess, "Popen", fake_popen)
+    config = {"benchmark": {"name": "libero"}}
+    shard = _shard("libero/task=0/eps=0-0", {}, 1)
+    coord._launch_unit(config, shard, 0, "ws://h:1", tmp_path / "out", tmp_path, gpu=3)
+    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "3"
+    assert captured["env"]["MUJOCO_EGL_DEVICE_ID"] == "3"
+
+    captured.clear()
+    coord._launch_unit(config, shard, 1, "ws://h:1", tmp_path / "out", tmp_path, gpu=None)
+    assert captured["env"] is None

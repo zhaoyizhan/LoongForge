@@ -344,10 +344,19 @@ def _launch_unit(
     # assign a new worker index, so create the directory before the unit starts.
     (output_dir / f"worker_{index}").mkdir(parents=True, exist_ok=True)
     log = open(output_dir / f"worker_{index}.log", "a", buffering=1)
+    # Pin the worker's offscreen renderer to its slot GPU. LIBERO/CALVIN are
+    # CPU-sim, but EGL still renders on a GPU and MuJoCo defaults to device 0;
+    # without this every worker in a coordinated run renders on one card.
+    env = None
+    if gpu is not None:
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu)
+        env["MUJOCO_EGL_DEVICE_ID"] = str(gpu)
     return subprocess.Popen(
         [sys.executable, "-m", "loongforge.embodied.eval.orchestrator.run", "--config", str(cfg_path)],
         stdout=log,
         stderr=subprocess.STDOUT,
+        env=env,
     )
 
 
@@ -574,12 +583,9 @@ def _run_batch(
             index = pending.pop(0)
             url, gpu = slots[slot]
             started_at[index] = time.time()
-            if pin_gpu:
-                proc = _launch_unit(
-                    config, shards[index], index, url, output_dir, tmp, gpu=gpu, pin_gpu=True
-                )
-            else:
-                proc = _launch_unit(config, shards[index], index, url, output_dir, tmp)
+            proc = _launch_unit(
+                config, shards[index], index, url, output_dir, tmp, gpu=gpu, pin_gpu=pin_gpu
+            )
             pool[proc] = (slot, index)
         finished, timed_out = _await_slot(pool, started_at, timeout_sec)
         slot, index = pool.pop(finished)
