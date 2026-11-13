@@ -443,12 +443,15 @@ pools:
 | `pools.gpu_sim.placement` | 仅 GPU-sim 家族：`co_locate`（仿真与推理服务同卡，推荐）或 `separate` |
 | `coordinator.n_workers` | 未配置对应池时 N 的回退值（默认 1） |
 | `benchmark.episodes_per_chunk` | 一个评测单元连续跑多少集 |
+| `benchmark.tasks_per_unit` | 仅 LIBERO：一个 worker 进程连续跑多少个 task（默认 1）。官方协议是每 task 1 集，设为 5 左右可分摊 torch/robosuite 导入开销，适合 CFS 等慢速共享文件系统 |
 | `benchmark.plan_order` | `lpt_long`：长任务的**所有** chunk 先派发，其余再轮转（RoboTwin 推荐） |
 | `benchmark.long_task_steps` | 长任务判定阈值（官方 step_limit，如 `1200`） |
 | `benchmark.long_task_episodes_per_chunk` | 只对长任务使用的更细分片（如 `10`），把最后一个 unit 的尾段从 ~83 min 压到 ~33 min |
 | `benchmark.sim_cpu_threads` | 仅 RoboTwin；多仿真共卡时设为 1，避免线程超订 |
 
 **池的 key 必须和 benchmark 家族匹配**：LIBERO / CALVIN 读 `pools.cpu_sim`，GPU-sim 家族读 `pools.gpu_sim`。写错 key 会被忽略（coordinator 会打印一行 warning），N 回退到 `coordinator.n_workers or 1`，表现只是「比校准表慢很多」。另外 **N 是每个 service（每张卡）的仿真数**，总并发 = 卡数 × N（如 8 卡 N=48 → 384 个仿真）。
+
+CPU-sim 家族（LIBERO / CALVIN）仍然通过 EGL 在 GPU 上离屏渲染。coordinator 会把每个 worker 固定到其 slot 对应的 GPU（`CUDA_VISIBLE_DEVICES` + `MUJOCO_EGL_DEVICE_ID`），避免所有仿真的渲染都落在 GPU0；该行为自动生效，无需额外配置。
 
 单元数应接近 slot 数：`episodes_per_chunk ≈ max(1, floor(总集数 / (卡数 × N)))`，这样一波跑完、每单元只付一次进程启动。未显式设置时，planner 的默认值是 `ceil(E / (4 × slot 数))`（约每 slot 4 个单元），让后续波次可以回填空出的 slot；已知一波能跑完时请显式设为上式。单任务且总集数 ≤ slot 数时该值取 1，此时继续增大 N 不会提高并发。
 

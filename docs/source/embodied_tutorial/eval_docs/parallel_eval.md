@@ -31,6 +31,7 @@ Both paths use the same runners and the same output schema, so an existing
 | `coordinator.n_workers` | 1 | Fallback `N` when the family's pool section is absent |
 | `run.unit_timeout_sec` | `max_episodes × timeouts.per_episode_sec` | Wall-clock backstop for one unit. Set it explicitly whenever `per_episode_sec` is large (a sensor-model batch can need 7200 s), otherwise a unit that hangs in native code blocks its slot for tens of hours |
 | `benchmark.episodes_per_chunk` | computed: ~4 units per slot (`ceil(E / (4·S))`) | Episodes per eval unit (one worker process) |
+| `benchmark.tasks_per_unit` | 1 | LIBERO only: tasks that share one worker process. The official protocol is one episode per task, so `>1` amortises the torch/robosuite import on slow shared filesystems. `1` keeps the original one-task-per-shard plan |
 | `benchmark.plan_order` | `task` | `lpt` dispatches the longest units first; `lpt_long` keeps every shard of the long tasks ahead of all short work (see Section 4) |
 | `benchmark.long_task_steps` | unset | Step limit that marks a task as "long" for `lpt_long` (e.g. `1200`); `-1`/unset disables the split |
 | `benchmark.long_task_episodes_per_chunk` | unset | Finer chunk for the long tasks only (e.g. `10`), which shortens the last unit's tail |
@@ -44,6 +45,15 @@ which only shows up as "the run is slower than the calibration table says".
 `N` is per service, so the number of concurrent sims is `len(servers[].gpus) × N`
 (e.g. `N=48` on 8 GPUs = 384 sims). `N` and `episodes_per_chunk` are the two knobs that
 matter most; see [Section 4](#4-choosing-n-and-episodes_per_chunk).
+
+CPU-sim families (LIBERO, CALVIN) still render offscreen through EGL, i.e. on a GPU. The
+coordinator pins every worker to the GPU of its slot (`CUDA_VISIBLE_DEVICES` +
+`MUJOCO_EGL_DEVICE_ID`), so sims spread rendering across all service cards instead of
+defaulting to GPU 0. No config key is needed; this is automatic.
+
+When the protocol is one episode per task (LIBERO-Plus), every episode would otherwise
+start a fresh process. On a slow shared filesystem the imports dominate, so set
+`benchmark.tasks_per_unit` (e.g. `5`) to run several tasks in the same worker.
 
 Server-side batching (`server.batching`, below) is the third knob, and the only one that
 raises the ceiling for an inference-bound model:
